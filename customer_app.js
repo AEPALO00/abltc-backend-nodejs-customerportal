@@ -26,7 +26,7 @@ app.use(session({
 const port = 3000;
 
 // MongoDB connection URI and database name
-const uri =  "mongodb://root:MjM3NzctYTAxNTcw@localhost:27017";
+const uri =  "mongodb://root:MzQwNy1hMDE1NzA1@localhost:27017";
 mongoose.connect(uri, {'dbName': 'customerDB'});
 
 // Middleware to parse JSON requests
@@ -108,6 +108,23 @@ app.get('/api/logout', async (req, res) => {
 app.get('/', async (req, res) => {
     res.sendFile(path.join(__dirname, 'frontend', 'home.html'));
 });
+
+app.use((err,req,res,next) => {
+    err.statusCode = err.statusCode || 500;
+    err.status = err.status || "Error";
+    console.log(err.stack);
+    res.status(err.statusCode).json({
+        status: err.statusCode,
+        message: err.message,
+    });
+})
+
+app.all("*",(req,res,next)=>{
+    const err = new Error(`Cannot find the URL ${req.originalUrl} in this application. Please check.`);
+    err.status = "Endpoint Failure";
+    err.statusCode = 404.
+    next(err);
+})
 
 // Starting the server and listening on the specified port
 app.listen(port, () => {
