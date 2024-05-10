@@ -9,6 +9,8 @@ const saltRounds = 5;
 const password = "admin";
 const session = require('express-session');
 
+const { ValidationError, InvalidUserError, AuthenticationFailed } = require('./errors/CustomError');
+
 // Creating an instance of the Express application
 const app = express();
 
@@ -39,57 +41,75 @@ app.use('/static', express.static(path.join(".", 'frontend')));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // POST endpoint for user login
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', async (req, res, next) => {
     const data = req.body;
     console.log(data);
     let user_name = data['user_name'];
     let password = data['password'];
 
-    // Querying the MongoDB 'customers' collection for matching user_name and password
-    const documents = await Customers.find({ user_name: user_name });
-    console.log(documents)
-    // If a matching user is found, set the session username and serve the home page
-    if (documents.length > 0) {
-        let result = await bcrypt.compare(password, documents[0]['password']);
-
-        if(result) {
-            const genidValue = req.sessionID;
-            res.cookie('username', user_name);
-            res.send("User Logged In");
+    try {
+        // Querying the MongoDB 'customers' collection for matching user_name and password
+        const user = await Customers.findOne({ user_name: user_name });
+        console.log(user)
+        // If a matching user is found, set the session username and serve the home page
+        if (user) {
+            let result = await bcrypt.compare(password, user['password']);
+            console.log(result)
+            if(result) {
+                const genidValue = req.sessionID;
+                res.cookie('username', user_name);
+                res.send("User Logged In");
+            } else {
+                throw new AuthenticationFailed("User credentials invalid");
+            }
         } else {
-            res.send("Password Incorrect! Trye again.")
+            throw new InvalidUserError("No such user in db");
         }
-    } else {
-        res.send("User Information incorrect");
+    } catch (error) {
+        next(error);
     }
 });
 
 // POST endpoint for adding a new customer
-app.post('/api/add_customer', async (req, res) => {
+app.post('/api/add_customer', async (req, res, next) => {
     const data = req.body;
-    console.log(data)
-    const documents = await Customers.find({ user_name: data['user_name']});
+    const age = parseInt(data["age"]);
+    const name = data["name"];
 
-    if (documents.length > 0) {
-        res.send("User already exists");
-    }
+    try {
+        if (age < 21) {
+            throw new ValidationError("Customer Under required age limit");
+        }
 
-    // Hashing password
-    console.log("hashing")
-    let hashedpwd = bcrypt.hashSync(data['password'], saltRounds)
+        if (/[\+\#\d]/.test(name)) {
+            throw new ValidationError("Name cannot contain digits, #, or +");
+        }
+
+        const documents = await Customers.find({ user_name: data['user_name']});
     
-    // Creating a new instance of the Customers model with data from the request
-    const customer = new Customers({
-        "user_name": data['user_name'],
-        "age": data['age'],
-        "password": hashedpwd,
-        "email": data['email']
-    });
-
-    // Saving the new customer to the MongoDB 'customers' collection
-    await customer.save();
-
-    res.send("Customer added successfully")
+        if (documents.length > 0) {
+            throw new InvalidUserError("User already exists");
+        }
+    
+        // Hashing password
+        console.log("hashing")
+        let hashedpwd = bcrypt.hashSync(data['password'], saltRounds)
+        
+        // Creating a new instance of the Customers model with data from the request
+        const customer = new Customers({
+            "user_name": data['user_name'],
+            "age": data['age'],
+            "password": hashedpwd,
+            "email": data['email']
+        });
+    
+        // Saving the new customer to the MongoDB 'customers' collection
+        await customer.save();
+    
+        res.send("Customer added successfully")
+    } catch (error) {
+        next(error);
+    }
 });
 
 // GET endpoint for user logout
